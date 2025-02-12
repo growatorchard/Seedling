@@ -188,10 +188,32 @@ if 'debug_mode' not in st.session_state:
 
 # File uploader
 with st.spinner("Waiting for files..."):
-    uploaded_files = st.file_uploader("Upload your files", accept_multiple_files=True)
-
-if uploaded_files == []:  # Empty list means uploader is shown but no files yet
-    st.info("Drag and drop your files here or click to browse")
+    # Create a progress bar
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
+    
+    def on_upload_progress(uploaded_size, total_size):
+        if total_size > 0:
+            progress = int((uploaded_size / total_size) * 100)
+            progress_bar.progress(progress)
+            progress_text.text(f"Uploading: {progress}% ({uploaded_size}/{total_size} bytes)")
+    
+    uploaded_files = st.file_uploader(
+        "Upload your files",
+        accept_multiple_files=True,
+        on_change=lambda: progress_bar.empty()  # Clear progress when new files are selected
+    )
+    
+    if uploaded_files:
+        total_size = sum(file.size for file in uploaded_files)
+        uploaded_size = 0
+        for file in uploaded_files:
+            uploaded_size += file.size
+            on_upload_progress(uploaded_size, total_size)
+    else:
+        progress_bar.empty()
+        progress_text.empty()
+        st.info("Drag and drop your files here or click to browse")
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
@@ -239,17 +261,19 @@ if uploaded_files:
     
     # Pagination controls
     if total_pages > 1:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col1:
-            if st.button("Previous", key="prev_upload", disabled=st.session_state.upload_page == 0):
+        cols = st.columns([1, 2, 1])
+        with cols[0]:
+            if cols[0].button("◀", key="prev_upload", disabled=st.session_state.upload_page == 0):
                 st.session_state.upload_page = max(0, st.session_state.upload_page - 1)
-                st.rerun()
-        with col2:
+                st.experimental_set_query_params(page=st.session_state.upload_page)
+        
+        with cols[1]:
             st.write(f"Page {st.session_state.upload_page + 1} of {total_pages}")
-        with col3:
-            if st.button("Next", key="next_upload", disabled=st.session_state.upload_page >= total_pages - 1):
+        
+        with cols[2]:
+            if cols[2].button("▶", key="next_upload", disabled=st.session_state.upload_page >= total_pages - 1):
                 st.session_state.upload_page = min(total_pages - 1, st.session_state.upload_page + 1)
-                st.rerun()
+                st.experimental_set_query_params(page=st.session_state.upload_page)
 
     def process_selected_files():
         # Only process checked files
@@ -292,12 +316,21 @@ if uploaded_files:
             st.success("ChatGPT response parsed successfully. File conversion mapping:")
             st.json(mapping)
 
-        # Process files first
-        for f in selected_files:
+        # Process files with progress bar
+        conversion_progress = st.progress(0)
+        conversion_text = st.empty()
+        
+        total_files = len(selected_files)
+        for idx, f in enumerate(selected_files, 1):
             target_ext = mapping.get(f.name)
             if not target_ext:
                 st.error(f"No target extension for file {f.name}. Skipping.")
                 continue
+            
+            # Update progress
+            progress = int((idx / total_files) * 100)
+            conversion_progress.progress(progress)
+            conversion_text.text(f"Converting file {idx}/{total_files}: {f.name}")
                 
             new_filename, file_bytes = convert_uploaded_file(f, target_ext)
             
@@ -306,6 +339,11 @@ if uploaded_files:
                 'filename': new_filename,
                 'bytes': file_bytes
             })
+        
+        # Clear progress indicators after completion
+        conversion_progress.empty()
+        conversion_text.empty()
+        st.success("All files converted successfully!")
 
     if st.button("Process Files"):
         process_selected_files()
@@ -336,27 +374,43 @@ if uploaded_files:
         
         # Pagination controls for processed files
         if total_proc_pages > 1:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col1:
-                if st.button("Previous", key="prev_proc", disabled=st.session_state.process_page == 0):
+            cols = st.columns([1, 2, 1])
+            with cols[0]:
+                if cols[0].button("◀", key="prev_proc", disabled=st.session_state.process_page == 0):
                     st.session_state.process_page = max(0, st.session_state.process_page - 1)
-                    st.rerun()
-            with col2:
+                    st.experimental_set_query_params(proc_page=st.session_state.process_page)
+            
+            with cols[1]:
                 st.write(f"Page {st.session_state.process_page + 1} of {total_proc_pages}")
-            with col3:
-                if st.button("Next", key="next_proc", disabled=st.session_state.process_page >= total_proc_pages - 1):
+            
+            with cols[2]:
+                if cols[2].button("▶", key="next_proc", disabled=st.session_state.process_page >= total_proc_pages - 1):
                     st.session_state.process_page = min(total_proc_pages - 1, st.session_state.process_page + 1)
-                    st.rerun()
+                    st.experimental_set_query_params(proc_page=st.session_state.process_page)
 
         # Add download all button
         if st.session_state.processed_files:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 def create_zip():
+                    zip_progress = st.progress(0)
+                    zip_text = st.empty()
+                    
                     zip_buffer = BytesIO()
+                    total_files = len(st.session_state.processed_files)
+                    
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                        for file_info in st.session_state.processed_files:
+                        for idx, file_info in enumerate(st.session_state.processed_files, 1):
+                            # Update progress
+                            progress = int((idx / total_files) * 100)
+                            zip_progress.progress(progress)
+                            zip_text.text(f"Adding to ZIP: {file_info['filename']} ({idx}/{total_files})")
+                            
                             zip_file.writestr(file_info['filename'], file_info['bytes'])
+                    
+                    # Clear progress indicators
+                    zip_progress.empty()
+                    zip_text.empty()
                     return zip_buffer.getvalue()
 
                 st.download_button(
