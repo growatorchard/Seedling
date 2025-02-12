@@ -276,26 +276,39 @@ if uploaded_files:
                 st.experimental_set_query_params(page=st.session_state.upload_page)
 
     def process_selected_files():
+        # Create progress indicators immediately
+        conversion_progress = st.progress(0)
+        conversion_text = st.empty()
+        conversion_text.text("Preparing files for processing...")
+        
         # Only process checked files
         selected_files = [f for f in uploaded_files if f.name in st.session_state.selected_files]
         if not selected_files:
+            conversion_progress.empty()
+            conversion_text.empty()
             st.warning("Please select at least one file to process.")
             return
-            
-        # Step 1. Prepare the list of file names.
-        uploaded_filenames = [f.name for f in selected_files]
         
-        # Step 2. Create the prompt for ChatGPT.
-        prompt = (
-            "I have the following list of file names. For each file, determine the correct file extension "
-            "that it should have. Only use one of the following extensions: jpeg, png, txt, pdf, docx. "
-            "Return exactly one line per file in the format:\n"
-            "<file_name>, <target_extension>\n\n"
-            "Do not include any additional text or explanations.\n\n"
-            "Here is the list of files:\n" + "\n".join(uploaded_filenames)
-        )
-        st.info("Sending file list to ChatGPT for conversion assignment...")
-        response, usage, raw = query_chatgpt_api(prompt)
+        # Update progress for ChatGPT processing
+        conversion_progress.progress(10)
+        with st.spinner("🤖 Sending files to ChatGPT for analysis..."):
+            conversion_text.text("Waiting for ChatGPT response...")
+            
+            # Step 1. Prepare the list of file names.
+            uploaded_filenames = [f.name for f in selected_files]
+            
+            # Step 2. Create the prompt for ChatGPT.
+            prompt = (
+                "I have the following list of file names. For each file, determine the correct file extension "
+                "that it should have. Only use one of the following extensions: jpeg, png, txt, pdf, docx. "
+                "Return exactly one line per file in the format:\n"
+                "<file_name>, <target_extension>\n\n"
+                "Do not include any additional text or explanations.\n\n"
+                "Here is the list of files:\n" + "\n".join(uploaded_filenames)
+            )
+            
+            response, usage, raw = query_chatgpt_api(prompt)
+            conversion_progress.progress(30)
         
         # Only show ChatGPT output if debug mode is enabled
         if st.session_state.debug_mode:
@@ -305,30 +318,28 @@ if uploaded_files:
             st.json(usage)
 
         # Step 3. Parse and validate ChatGPT's response.
+        conversion_text.text("Parsing ChatGPT response...")
+        conversion_progress.progress(50)
+        
         mapping, error = parse_chatgpt_response(response, uploaded_filenames)
         if error:
+            conversion_progress.empty()
+            conversion_text.empty()
             st.error(f"Error parsing ChatGPT response: {error}")
             return
 
-        if not st.session_state.debug_mode:
-            st.success("Files processed successfully!")
-        else:
-            st.success("ChatGPT response parsed successfully. File conversion mapping:")
-            st.json(mapping)
-
-        # Process files with progress bar
-        conversion_progress = st.progress(0)
-        conversion_text = st.empty()
-        
+        # Process files
         total_files = len(selected_files)
+        base_progress = 50  # Start from 50% after ChatGPT processing
+        
         for idx, f in enumerate(selected_files, 1):
             target_ext = mapping.get(f.name)
             if not target_ext:
                 st.error(f"No target extension for file {f.name}. Skipping.")
                 continue
             
-            # Update progress
-            progress = int((idx / total_files) * 100)
+            # Update progress (remaining 50% divided among files)
+            progress = base_progress + int((idx / total_files) * 50)
             conversion_progress.progress(progress)
             conversion_text.text(f"Converting file {idx}/{total_files}: {f.name}")
                 
@@ -343,7 +354,12 @@ if uploaded_files:
         # Clear progress indicators after completion
         conversion_progress.empty()
         conversion_text.empty()
-        st.success("All files converted successfully!")
+        
+        if not st.session_state.debug_mode:
+            st.success("Files processed successfully!")
+        else:
+            st.success("ChatGPT response parsed successfully. File conversion mapping:")
+            st.json(mapping)
 
     if st.button("Process Files"):
         process_selected_files()
