@@ -189,6 +189,10 @@ if 'debug_mode' not in st.session_state:
 # File uploader
 uploaded_files = st.file_uploader("Upload your files", accept_multiple_files=True)
 
+# Add after line 190
+if uploaded_files is None:  # This means the uploader is waiting
+    st.info("Waiting for files to be uploaded...")
+
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -238,12 +242,14 @@ if uploaded_files:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col1:
             if st.button("Previous", key="prev_upload", disabled=st.session_state.upload_page == 0):
-                st.session_state.upload_page -= 1
+                st.session_state.upload_page = max(0, st.session_state.upload_page - 1)
+                st.rerun()
         with col2:
             st.write(f"Page {st.session_state.upload_page + 1} of {total_pages}")
         with col3:
             if st.button("Next", key="next_upload", disabled=st.session_state.upload_page >= total_pages - 1):
-                st.session_state.upload_page += 1
+                st.session_state.upload_page = min(total_pages - 1, st.session_state.upload_page + 1)
+                st.rerun()
 
     def process_selected_files():
         # Only process checked files
@@ -333,25 +339,30 @@ if uploaded_files:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col1:
                 if st.button("Previous", key="prev_proc", disabled=st.session_state.process_page == 0):
-                    st.session_state.process_page -= 1
+                    st.session_state.process_page = max(0, st.session_state.process_page - 1)
+                    st.rerun()
             with col2:
                 st.write(f"Page {st.session_state.process_page + 1} of {total_proc_pages}")
             with col3:
                 if st.button("Next", key="next_proc", disabled=st.session_state.process_page >= total_proc_pages - 1):
-                    st.session_state.process_page += 1
+                    st.session_state.process_page = min(total_proc_pages - 1, st.session_state.process_page + 1)
+                    st.rerun()
 
         # Add download all button
         if st.session_state.processed_files:
-            def create_zip():
-                zip_buffer = BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for file_info in st.session_state.processed_files:
-                        zip_file.writestr(file_info['filename'], file_info['bytes'])
-                return zip_buffer.getvalue()
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                def create_zip():
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for file_info in st.session_state.processed_files:
+                            zip_file.writestr(file_info['filename'], file_info['bytes'])
+                    return zip_buffer.getvalue()
 
-            st.download_button(
-                label="Download All Files (ZIP)",
-                data=create_zip(),
-                file_name="converted_files.zip",
-                mime="application/zip"
-            )
+                st.download_button(
+                    label="Download All Files (ZIP)",
+                    data=create_zip(),
+                    file_name="converted_files.zip",
+                    mime="application/zip",
+                    key="download_all"
+                )
