@@ -187,11 +187,11 @@ if 'debug_mode' not in st.session_state:
     st.session_state.debug_mode = False
 
 # File uploader
-uploaded_files = st.file_uploader("Upload your files", accept_multiple_files=True)
+with st.spinner("Waiting for files..."):
+    uploaded_files = st.file_uploader("Upload your files", accept_multiple_files=True)
 
-# Add after line 190
-if uploaded_files is None:  # This means the uploader is waiting
-    st.info("Waiting for files to be uploaded...")
+if uploaded_files == []:  # Empty list means uploader is shown but no files yet
+    st.info("Drag and drop your files here or click to browse")
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
